@@ -190,9 +190,12 @@ module Neo4j
           # `as(identity)` is here to make sure we get the right variable
           # There might be a deeper problem of the variable changing when we
           # traverse an association
-          as(identity).instance_eval(&block).query.proxy_as(self.model, identity).tap do |new_query_proxy|
-            propagate_context(new_query_proxy)
-          end
+          
+          q = as(identity).instance_eval(&block)
+          q.as(:"#{identity}_#{_chain_level}")
+           .query.proxy_as(self.model, identity).tap do |new_query_proxy|
+             propagate_context(new_query_proxy)
+           end
         end
 
         def [](index)
