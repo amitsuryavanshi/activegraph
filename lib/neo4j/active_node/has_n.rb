@@ -212,13 +212,15 @@ module Neo4j::ActiveNode
     def association_proxy(name, options = {})
       name = name.to_sym
       hash = association_proxy_hash(name, options)
+
       association_proxy_cache_fetch(hash) do
         if result_cache = self.instance_variable_get('@source_proxy_result_cache')
           cache = nil
           result_cache.inject(nil) do |proxy_to_return, object|
             proxy = fresh_association_proxy(name, options.merge(start_object: object),
-                                            proc { (cache ||= previous_proxy_results_by_previous_id(result_cache, name))[object.neo_id] })
+                                            proc { (cache ||= previous_proxy_results_by_previous_id(result_cache, name))[object.neo_id] || [] })
 
+            
             object.association_proxy_cache[hash] = proxy
 
             (self == object ? proxy : proxy_to_return)
@@ -236,13 +238,25 @@ module Neo4j::ActiveNode
     end
 
     def previous_proxy_results_by_previous_id(result_cache, association_name)
-      query_proxy = self.class.as(:previous).where(neo_id: result_cache.map(&:neo_id))
-      query_proxy = self.class.send(:association_query_proxy, association_name, previous_query_proxy: query_proxy, node: :next, optional: true)
-
-      Hash[*query_proxy.pluck('ID(previous)', 'collect(next)').flatten(1)].each_value do |records|
+      query_proxy, results = scope_association_proxy(association_name) || previous_proxy_with_association(result_cache, association_name)
+      Hash[*results].each_value do |records|
         records.each do |record|
           record.instance_variable_set('@source_proxy_result_cache', records)
+          record.instance_variable_set('@source_query_proxy', query_proxy)
         end
+      end
+    end
+
+    def previous_proxy_with_association(result_cache, association_name)
+      query_proxy = self.class.as(:previous).where(neo_id: result_cache.map(&:neo_id))
+      query_proxy = self.class.send(:association_query_proxy, association_name, previous_query_proxy: query_proxy, node: :next, optional: true)
+      [query_proxy, query_proxy.pluck('ID(previous)', 'collect(next)').flatten(1)]
+    end
+
+    def scope_association_proxy(association_name)
+      if @source_query_proxy && (association_scope = @source_query_proxy.included_scope[association_name])
+        query_proxy = @source_query_proxy.as(@source_query_proxy.identity).instance_eval(&association_scope)
+        [query_proxy, query_proxy.pluck("ID(#{@source_query_proxy.identity})", "collect(#{query_proxy.identity})").flatten(1)]
       end
     end
 

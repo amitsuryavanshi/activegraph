@@ -10,6 +10,7 @@ module Neo4j
         include Neo4j::ActiveNode::Query::QueryProxyFindInBatches
         include Neo4j::ActiveNode::Query::QueryProxyEagerLoading
         include Neo4j::ActiveNode::Dependent::QueryProxyMethods
+        include Neo4j::ActiveNode::Query::Include
 
         # The most recent node to start a QueryProxy chain.
         # Will be nil when using QueryProxy chains on class methods.

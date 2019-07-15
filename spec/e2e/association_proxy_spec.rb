@@ -291,12 +291,15 @@ describe 'Association Proxy' do
     before do
       stub_active_node_class('Person') do
         property :name
+        property :status
 
         has_many :out, :knows, model_class: 'Person', type: nil
         has_many :in, :posts, type: :posts
         has_many :in, :comments, type: :comments
         has_one :out, :parent, type: :parent, model_class: 'Person', dependent: :delete
         has_many :in, :children, origin: :parent, model_class: 'Person'
+
+        scope :children_with_status, ->(child_status) { children.where(status: child_status) }
       end
 
       stub_active_node_class('Post') do
@@ -386,6 +389,23 @@ describe 'Association Proxy' do
       person1 = Person.create(name: '1', children: [person2])
       person1.update(children: [person2, person3.id])
       expect(person3.as(:p).parent.count).to eq(1)
+    end
+
+    it 'eagerloads scope' do
+      p4 = Person.create(name: '4', status: 'active')
+      p3 = Person.create(name: '3', children: [p4], status: 'active')
+      p2 = Person.create(name: '2', children: [p3])
+      p1 = Person.create(name: '1', children: [p2])
+      
+      log_queries!
+      expect_queries(3) do
+        st = 'active'
+        Person.all.include_scope(:children) { children_with_status(st).include_scope(:children) { children_with_status(st) } }.each do |p|
+          p.children.each do |child|
+            child.children.to_a
+          end
+        end
+      end
     end
   end
 end
